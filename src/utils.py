@@ -7,6 +7,37 @@ from skbio.parse.sequences import parse_fastq
 from IPython.display import clear_output
 from itertools import izip
 
+def distance(s1, s2):
+    """Calculates the sequence-Levenstein distance between s1 and s2"""
+    length1 = len(s1)
+    length2 = len(s2)
+    # Initiate 2-D array
+    distances = [[0 for i in range(length2 + 1)] for j in range(length1 + 1)]
+    # Add in null values for the x rows and y columns
+    for i in range(0, length1 + 1):
+        distances[i][0] = i
+    for j in range(0, length2 + 1):
+        distances[0][j] = j
+
+    # // Classical Levenshtein part
+    for i in range(1, length1 + 1):
+        for j in range(1,length2 + 1):
+            cost = 0
+            if s1[i - 1] != s2[j - 1]:
+                cost = 1
+            distances[i][j] = min(distances[i - 1][j - 1] + cost, distances[i][j - 1] + 1, distances[i - 1][j] + 1)
+    min_distance = distances[length1][length2]
+
+    # New Sequence-Levenshtein part
+
+    # Truncating
+    for i in range(0, length1 + 1):
+        min_distance = min(min_distance, distances[i][length2])
+    # Elongating
+    for j in range(0, length2 + 1):
+        min_distance = min(min_distance, distances[length1][j])
+    return min_distance
+
 def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
     '''
     Splits read pairs given in `read1` and `read2` according to the list of
@@ -31,18 +62,28 @@ def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
         ind = seq1[istart:istart+ilen]
         # It's an exact match for now but we really need to accomodate
         # mismatches here. Hamming distance?
-        if ind in barcodes:
+        # I have added code that corrects 1 error
+        error_dict = {}
+        error_list = [barcode for barcode in barcodes if distance(ind, barcode) == 1]
+        if len(error_list) > 0:
+            error_dict[ind] = error_list[0]
+        if ind in barcodes or ind in error_dict:
             assigned += 1
             qstr1 = ''.join([chr(val+33) for val in q1])
             qstr2 = ''.join([chr(val+33) for val in q2])
             if not(ind in output_files):
+                if ind in error_dict:
+                    value = reverse_lookup(error_dict, error_dict[ind])
+                    ind = error_dict[ind]
+                    print '...created output files for: %s from the correction of %s' % (ind, value)
+                else:
+                    print '...created output files for: %s' % ind
                 r1 = gzip.open('../data/%s_R1.fastq.gz' % ind, 'wb')
                 r2 = gzip.open('../data/%s_R2.fastq.gz' % ind, 'wb')
-                print '...created output files for: %s' % ind
                 sys.stdout.flush()
                 output_files[ind] = (r1, r2)
-            output_files[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
-            output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
+                output_files[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
+                output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
     print output_files.keys()
     print 'Assigned:\t%d sequences' % assigned
     for ind,files in output_files.items():
