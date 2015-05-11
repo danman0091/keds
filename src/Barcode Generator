@@ -1,0 +1,182 @@
+import random
+
+print 'Barcode Generator...'
+
+print '\nUp to how many errors do you want to correct? (default is 1)'
+# ask for desired number of errors
+errors = raw_input("Errors: ")
+if errors == '':
+    errors = 1
+else:
+    errors = int(errors)
+print "{0} errors".format(errors)
+
+print 'Enter the LENGTH as an integer (default is 7)'
+# ask the desired number of bases in barcode
+length = raw_input("Barcode length: ")
+if length == '':
+    length = 7
+else:
+    length = int(length)
+print "Length: {0}".format(length)
+
+print '\nEnter the number of barcodes (default is LENGTH x 2)'
+
+# ask how many barcodes should be made
+number = raw_input("Total number of barcodes: ")
+if number == '':
+    number = length * 2
+else:
+    number = int(number)
+print "{0} barcodes".format(number)
+
+print '\nEnter desired GC content range in percentages (i.e. 50 ->50%)'
+
+# ask for desired GC content range
+mingc = raw_input("Minimum GC content (default is 40%):")
+if not mingc:
+    mingc = float(40) / 100
+else:
+    mingc = float(mingc) / 100
+
+maxgc = raw_input("Maximum GC content (default is 60%):")
+if not maxgc:
+    maxgc = float(60) / 100
+else:
+    maxgc = float(maxgc) / 100
+
+
+def gc_cont(barcode):
+    """Returns the GC content of a barcode"""
+    gc = 0.0
+    for base in range(length):
+        if barcode[base] == 'C' or barcode[base] == 'G':
+            gc += 1
+        else:
+            gc += 0
+    cont = gc / length
+    return cont
+
+
+def make_barcode():
+    """Generates a random barcode from nucl_list"""
+    barcode = ''
+    while barcode == '':
+        for i in range(length):
+            barcode += random.choice(nucl_list)
+        if maxgc >= gc_cont(barcode) >= mingc:
+            bar_code = barcode
+        else:
+            barcode = ''
+    return bar_code
+
+
+def distance(s1, s2):
+    """Calculates the hamming distance between s1 and s2"""
+    length1 = len(s1)
+    length2 = len(s2)
+    # Initiate 2-D array
+    distances = [[0 for i in range(length2 + 1)] for j in range(length1 + 1)]
+    # Add in null values for the x rows and y columns
+    for i in range(0, length1 + 1):
+        distances[i][0] = i
+    for j in range(0, length2 + 1):
+        distances[0][j] = j
+
+    for i in range(1, length1 + 1):
+        for j in range(1, length2 + 1):
+            cost = 0
+            if s1[i - 1] != s2[j - 1]:
+                cost = 1
+            distances[i][j] = min(distances[i - 1][j - 1] + cost, distances[i][j - 1] + 1, distances[i - 1][j] + 1)
+    min_distance = distances[length1][length2]
+
+    for i in range(0, length1 + 1):
+        min_distance = min(min_distance, distances[i][length2])
+    for j in range(0, length2 + 1):
+        min_distance = min(min_distance, distances[length1][j])
+    return min_distance
+
+
+def compare_distances(new_barcode):
+    """Compares the sequence-Levenstein distance between
+    new barcode and old barcodes
+    Uses the S-L distance depending on # errors
+    to correct (2 * k + 1) k = errors"""
+    # Count number of barcodes with bad distance
+    count = 0
+    global barcode_list
+    if errors == 1:
+        for barcode in barcode_list:
+            if distance(new_barcode, barcode) < 3:
+                count += 1
+    elif errors == 2:
+        for barcode in barcode_list:
+            if distance(new_barcode, barcode) < 5:
+                count += 1
+    return count
+
+
+def complement(barcode):
+    """returns the complement of the barcode"""
+    compl_dict = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+    comp = ''
+    for base in barcode:
+        comp += compl_dict[base]
+    return comp
+
+
+def compare_complements(new_barcode):
+    """Returns a count > 0 if generated barcode is a complement of
+    any in current list"""
+    complement_count = 0
+    global barcode_list
+    for barcode in barcode_list:
+        if complement(barcode) == complement(new_barcode):
+            complement_count += 1
+    return complement_count
+
+
+def compare_repeat(barcode):
+    """Returns a count > 0 if 2 consecutive bases in a barcode are the same"""
+    count = 0
+    for i in range(length - 1):
+        if barcode[i] == barcode[i + 1]:
+            count += 1
+    return count
+
+
+def compare_barcodes():
+    """Compares a new generated barcode to barcodes already in barcode_list.
+    checks for:
+    1. The desired S-L distance between each barcode
+    2. Excludes self-complements
+    3. Excludes any barcodes that contain 2 duplicate consecutive bases"""
+    new_barcode = make_barcode()
+    global errors
+    if new_barcode not in barcode_list:
+        distance_count = compare_distances(new_barcode)
+        complement_count = compare_complements(new_barcode)
+        repeat_count = compare_repeat(new_barcode)
+        if distance_count > 0 or complement_count > 0 or repeat_count > 0:
+            pass
+        else:
+            barcode_list.append(new_barcode)
+    else:
+        pass
+
+# Initiate lists
+nucl_list = ['A', 'C', 'G', 'T']
+barcode_list = []
+
+# Initiate the functions to generate barcodes and continue to generate barcodes
+# that fit the desired criteria
+while len(barcode_list) < number:
+    compare_barcodes()
+barcode_list.sort()
+
+if errors == 1:
+    min_dist = 3
+elif errors == 2:
+    min_dist = 5
+print "Created {0} barcodes: {1} with a S-L distance of at least {2}".format(len(barcode_list), barcode_list, min_dist)
