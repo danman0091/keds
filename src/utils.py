@@ -6,6 +6,37 @@ import pandas as pd
 from skbio.parse.sequences import parse_fastq
 from IPython.display import clear_output
 from itertools import izip
+import numpy as np
+
+
+def SLdistance(s1, s2):
+    """Calculates the hamming distance between s1 and s2"""
+    # Initiate np array
+    matrix = np.zeros((len(s1) + 1, len(s2) + 1), dtype=np.int)
+    matrix[:, 0] = np.array([i for i in xrange(len(s1) + 1)])
+    matrix[0, :] = np.array([i for i in xrange(len(s2) + 1)])
+
+    # // Classical Levenshtein part
+    for i in xrange(1, len(s1) + 1):
+        for j in xrange(1, len(s2) + 1):
+            cost = 0
+            if s1[i - 1] != s2[j - 1]:
+                cost = 1
+            matrix[i, j] = min(matrix[(i - 1), (j - 1)] + cost,
+                               matrix[i, (j - 1)] + 1,
+                               matrix[(i - 1), j] + 1)
+    min_distance = matrix[len(s1)][len(s2)]
+
+    # New Sequence-Levenshtein part
+
+    # Truncating
+    for i in xrange(0, len(s1) + 1):
+        min_distance = min(min_distance, matrix[i, len(s2)])
+    # Elongating
+    for j in xrange(0, len(s2) + 1):
+        min_distance = min(min_distance, matrix[len(s1), j])
+    return min_distance
+    
 
 def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
     '''
@@ -20,6 +51,7 @@ def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
     fastq_tpl = '@{id}\n{seq}\n+\n{q}\n' 
     cnt = 0
     assigned = 0
+    error_dict = {}
     for rec1, rec2 in izip(parse_fastq(read1), parse_fastq(read2)):
         id1, seq1, q1 = rec1
         id2, seq2, q2 = rec2
@@ -30,8 +62,28 @@ def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
         istart, ilen = bc_pos
         ind = seq1[istart:istart+ilen]
         # It's an exact match for now but we really need to accomodate
-        # mismatches here. Hamming distance?
-        if ind in barcodes:
+        # mismatches here. Hamming distance
+        
+        # I have added code that corrects 1 error
+        for barcode in barcodes:
+            if SLdistance(ind, barcode) == 1:
+                error_dict[ind] = barcode
+        
+        if ind in error_dict:
+            assigned += 1
+            mismatch = ind
+            ind = error_dict[ind]
+            qstr1 = ''.join([chr(val+33) for val in q1])
+            qstr2 = ''.join([chr(val+33) for val in q2])
+            if not(ind in output_files):
+                r1 = gzip.open('../data/%s_R1.fastq.gz' % ind, 'wb')
+                r2 = gzip.open('../data/%s_R2.fastq.gz' % ind, 'wb')
+                print '...created output files for {0} from the correction of {1}'.format(ind, mismatch)
+                sys.stdout.flush()
+                output_files[ind] = (r1, r2)
+            output_files[[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
+            output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
+        elif ind in barcodes:
             assigned += 1
             qstr1 = ''.join([chr(val+33) for val in q1])
             qstr2 = ''.join([chr(val+33) for val in q2])
