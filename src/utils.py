@@ -81,7 +81,7 @@ def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
                 print '...created output files for {0} from the correction of {1}'.format(ind, mismatch)
                 sys.stdout.flush()
                 output_files[ind] = (r1, r2)
-            output_files[[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
+            output_files[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
             output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
         elif ind in barcodes:
             assigned += 1
