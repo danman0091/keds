@@ -6,6 +6,36 @@ import pandas as pd
 from skbio.parse.sequences import parse_fastq
 from IPython.display import clear_output
 from itertools import izip
+import numpy as np
+
+def SLdistance(s1, s2):
+    """Calculates the hamming distance between s1 and s2"""
+
+    # Initiate np array
+    matrix = np.zeros((len(s1) + 1, len(s2) + 1), dtype=np.int)
+    matrix[:, 0] = np.array([i for i in xrange(len(s1) + 1)])
+    matrix[0, :] = np.array([i for i in xrange(len(s2) + 1)])
+
+    # // Classical Levenshtein part
+    for i in xrange(1, len(s1) + 1):
+        for j in xrange(1, len(s2) + 1):
+            cost = 0
+            if s1[i - 1] != s2[j - 1]:
+                cost = 1
+            matrix[i, j] = min(matrix[(i - 1), (j - 1)] + cost,
+                               matrix[i, (j - 1)] + 1,
+                               matrix[(i - 1), j] + 1)
+    min_distance = matrix[len(s1)][len(s2)]
+
+    # New Sequence-Levenshtein part
+
+    # Truncating
+    for i in xrange(0, len(s1) + 1):
+        min_distance = min(min_distance, matrix[i, len(s2)])
+    # Elongating
+    for j in xrange(0, len(s2) + 1):
+        min_distance = min(min_distance, matrix[len(s1), j])
+    return min_distance
 
 def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
     '''
@@ -31,18 +61,20 @@ def split_by_index(read1, read2, barcodes, bc_pos=(26,6)):
         ind = seq1[istart:istart+ilen]
         # It's an exact match for now but we really need to accomodate
         # mismatches here. Hamming distance?
-        if ind in barcodes:
-            assigned += 1
-            qstr1 = ''.join([chr(val+33) for val in q1])
-            qstr2 = ''.join([chr(val+33) for val in q2])
-            if not(ind in output_files):
-                r1 = gzip.open('../data/%s_R1.fastq.gz' % ind, 'wb')
-                r2 = gzip.open('../data/%s_R2.fastq.gz' % ind, 'wb')
-                print '...created output files for: %s' % ind
-                sys.stdout.flush()
-                output_files[ind] = (r1, r2)
-            output_files[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
-            output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
+        # I have added code that corrects 1 error
+        dist = {bc: SLdistance(ind, bc) for bc in barcodes}
+        ind = min(dist, key=dist.get)
+        assigned += 1
+        qstr1 = ''.join([chr(val+33) for val in q1])
+        qstr2 = ''.join([chr(val+33) for val in q2])
+        if not(ind in output_files):
+            r1 = gzip.open('../data/%s_R1.fastq.gz' % ind, 'wb')
+            r2 = gzip.open('../data/%s_R2.fastq.gz' % ind, 'wb')
+            print '...created output files for: %s' % ind
+            sys.stdout.flush()
+            output_files[ind] = (r1, r2)
+        output_files[ind][0].write(fastq_tpl.format(id=id1,seq=seq1,q=qstr1))
+        output_files[ind][1].write(fastq_tpl.format(id=id2,seq=seq2,q=qstr2))
     print output_files.keys()
     print 'Assigned:\t%d sequences' % assigned
     for ind,files in output_files.items():
